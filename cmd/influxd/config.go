@@ -121,7 +121,7 @@ func NewConfig() *Config {
 	c.Data.RetentionCheckPeriod = Duration(10 * time.Minute)
 	c.Admin.Enabled = true
 	c.Admin.Port = 8083
-  c.ReportingDisabled = false
+	c.ReportingDisabled = false
 
 	// Detect hostname (or set to localhost).
 	if c.Hostname, _ = os.Hostname(); c.Hostname == "" {
