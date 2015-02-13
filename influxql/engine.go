@@ -985,9 +985,22 @@ func ReducePercentile(percentile float64) ReduceFunc {
 	}
 }
 
+// TODO: make this more efficient to stream data.
 func MapRawQuery(itr Iterator, e *Emitter, tmin int64) {
+	var values []*rawQueryMapOutput
+
 	for k, v := itr.Next(); k != 0; k, v = itr.Next() {
-		e.Emit(Key{k, itr.Tags()}, v)
+		values = append(values, &rawQueryMapOutput{k, v})
+		// Emit in batches.
+		// unbounded emission of data can lead to excessive memory use
+		// or other potential performance problems.
+		if len(values) == emitBatchSize {
+			e.Emit(Key{0, itr.Tags()}, values)
+			values = []*rawQueryMapOutput{}
+		}
+	}
+	if len(values) > 0 {
+		e.Emit(Key{0, itr.Tags()}, values)
 	}
 }
 
@@ -995,10 +1008,23 @@ type rawQueryMapOutput struct {
 	timestamp int64
 	value     interface{}
 }
+type rawOutputs []*rawQueryMapOutput
 
+func (a rawOutputs) Len() int           { return len(a) }
+func (a rawOutputs) Less(i, j int) bool { return a[i].timestamp < a[j].timestamp }
+func (a rawOutputs) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+
+// TODO: make this streaming so it doesn't buffer everything in memory
 func ReduceRawQuery(key Key, values []interface{}, e *Emitter) {
+	var a []*rawQueryMapOutput
 	for _, v := range values {
-		e.Emit(key, v)
+		a = append(a, v.([]*rawQueryMapOutput)...)
+	}
+	if len(a) > 0 {
+		sort.Sort(rawOutputs(a))
+		for _, o := range a {
+			e.Emit(Key{o.timestamp, key.Values}, o.value)
+		}
 	}
 }
 
